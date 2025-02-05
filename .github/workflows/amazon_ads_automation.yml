@@ -1,0 +1,50 @@
+name: Amazon Ads Automation
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Runs at 5 AM UTC daily
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || pip install requests google-cloud-bigquery pandas python-dotenv
+
+      - name: Set Environment Variables
+        run: |
+          echo "AMAZON_ADS_ACCESS_TOKEN=${{ secrets.AMAZON_ADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
+          echo "AMAZON_ADS_REFRESH_TOKEN=${{ secrets.AMAZON_ADS_REFRESH_TOKEN }}" >> $GITHUB_ENV
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" >> $GITHUB_ENV
+
+      - name: Authenticate Google Cloud
+        run: |
+          echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" > gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=gcp-key.json
+
+      - name: Run Fetch Amazon Ads Script
+        run: python fetch_amazon_ads.py | tee fetch_log.txt
+
+      - name: Run Data Processing Script
+        run: python process_data_bigquery.py | tee process_log.txt
+
+      - name: Upload Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: logs
+          path: |
+            fetch_log.txt
+            process_log.txt
